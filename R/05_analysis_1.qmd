@@ -1,62 +1,136 @@
 ---
 title: "05_analysis_1"
 format: html
+editor: visual
 ---
 
-```{r}
-# First main analysis
-# e.g. immunodominance landscape similar to Fig. 1E
-```
-
-Libraries
+## Libraries
 
 ```{r}
+#| message: false
+#| warning: false
 library("here")
 library("tidyverse")
+
+# Load custom functions if they exist
+if(file.exists("99_proj_func.R")){
+  source("99_proj_func.R")
+}
 ```
+
+## Load Data
 
 ```{r}
-source("99_proj_func.R")
+#| label: load-data
+
+# NOTE: This block tries to load 03_augment first. 
+# If 03 doesn't exist yet (because teammates haven't finished), it falls back to 02_clean.
+# This ensures the document renders even if step 03 is missing.
+
+path_03 <- here("data", "03_data_augment.tsv")
+path_02 <- here("data", "02_data_clean.tsv")
+
+if(file.exists(path_03)){
+  message("Loading 03_data_augment.tsv...")
+  experiment_data <- read_tsv(path_03, show_col_types = FALSE)
+} else if(file.exists(path_02)){
+  message("WARNING: 03_data_augment.tsv not found. Loading 02_data_clean.tsv instead.")
+  experiment_data <- read_tsv(path_02, show_col_types = FALSE)
+} else {
+  stop("No data found! Please run 02_clean.qmd first.")
+}
 ```
 
-Load data
+## Plot 1E (Group warm-up)
 
 ```{r}
-experiment_data <- load_tsvData("03_data_augment.tsv", show_col_types = FALSE)
+# Everyone reproduces Fig 1E here - placeholder
 ```
 
-# Plot 1E
+## Plot 1F (Selina)
 
 ```{r}
-
+# Placeholder for Selina
 ```
 
-# Plot 1F
+## Plot 1G (Marta)
 
 ```{r}
-
+# Placeholder for Marta
 ```
 
-# Plot 1G
+## Plot 1H (Selina)
 
 ```{r}
-
+# Placeholder for Selina
 ```
 
-# Plot 1H
+## Plot 1I (Tomasso)
 
 ```{r}
-
+# Placeholder for Tomasso
 ```
 
-# Plot 1I
+## Plot 2A - Immunodominance landscape (Ivan)
+Here we visualize the prevalence of T-cell responses for each peptide within specific HLA groups. We filter out HLA groups with fewer than 3 patients to ensure robustness.
 
 ```{r}
+#| label: plot-2a-ivan
+#| fig-width: 10
+#| fig-height: 6
 
-```
+# --- 1. Prepare Data for Plot 2A ---
+# Create a local copy to avoid modifying the global 'experiment_data' for others
+df_2a <- experiment_data
 
-# Plot 2A - funny plot
+# Standardize column names if necessary (based on 02_clean structure)
+if("sampleID" %in% names(df_2a)) df_2a <- rename(df_2a, patient_id = sampleID)
+if("Protein" %in% names(df_2a))  df_2a <- rename(df_2a, ORF = Protein)
+if("Peptide" %in% names(df_2a))  df_2a <- rename(df_2a, peptide = Peptide)
 
-```{r}
+# Ensure binary response exists (if 03_augment is not ready, we calculate it from p-value)
+# p < 0.05 is considered a positive response
+if(!"response_binary" %in% names(df_2a)) {
+  df_2a <- df_2a %>% mutate(response_binary = if_else(p < 0.05, 1, 0))
+}
 
-```
+# --- 2. Calculate Prevalence ---
+
+# A. Count patients per HLA (distinct patients only)
+hla_counts <- df_2a %>%
+  distinct(patient_id, HLA) %>%
+  count(HLA, name = "n_patients")
+
+# B. Filter HLAs with < 3 patients
+valid_hlas <- hla_counts %>%
+  filter(n_patients >= 3) %>%
+  pull(HLA)
+
+# C. Summarize data: calculate prevalence per Peptide within HLA
+plot_data <- df_2a %>%
+  filter(HLA %in% valid_hlas) %>%
+  group_by(HLA, peptide, ORF) %>%
+  summarise(
+    total_tested = n_distinct(patient_id),
+    responders = sum(response_binary, na.rm = TRUE),
+    prevalence = responders / total_tested,
+    .groups = "drop"
+  ) %>%
+  filter(prevalence > 0) # Keep only positive responses for cleaner plot
+
+# --- 3. Generate Plot ---
+
+ggplot(plot_data, aes(x = peptide, y = ORF)) +
+  geom_point(aes(size = prevalence, color = HLA), alpha = 0.7) +
+  scale_size_continuous(range = c(2, 8), name = "Prevalence") +
+  theme_bw() +
+  labs(
+    title = "SARS-CoV-2 T-cell Immunodominance Landscape",
+    subtitle = "Response prevalence per HLA allele (n >= 3 patients)",
+    x = "Peptide Epitope",
+    y = "Viral ORF"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
+    legend.position = "right"
+  )
